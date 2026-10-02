@@ -210,19 +210,31 @@ export class LearnedASLClassifier {
       }
     }
 
-    // ── Open-Mode Posture Boost for F ────────────────────────────────────────
+    // ── Open-Mode Posture Boost for F vs O ──────────────────────────────────
     // F posture: thumb tip touching/near index tip (circle/loop), with middle,
-    // ring, and pinky fingers extended upward.
+    // ring, and pinky fingers extended upward. (Middle and ring must NOT touch thumb!)
+    // O posture: all 4 fingertips touch or approach thumb tip to form an 'O' ring.
     if (features.length >= 78) {
       const iCurl = features[64];
       const mCurl = features[65];
       const rCurl = features[66];
       const pCurl = features[67];
       const pIdxTip = features[72];
+      const pMidTip = features[73];
+      const pRingTip = features[74];
 
-      const isFLoop = pIdxTip <= 0.55 && iCurl >= 0.20 && mCurl <= 0.62 && rCurl <= 0.65 && pCurl <= 0.65;
+      // F Loop: index touches thumb, BUT middle, ring, pinky are straight UP (not curled!)
+      const isFLoop = pIdxTip <= 0.55 && iCurl >= 0.18 && mCurl <= 0.48 && rCurl <= 0.52 && pCurl <= 0.55 && pMidTip >= 0.58;
+      
+      // O Ring: all fingertips curled down to meet the thumb tip
+      const isORing = pIdxTip <= 0.58 && pMidTip <= 0.58 && (pRingTip <= 0.65 || rCurl >= 0.42) && mCurl >= 0.42;
+
       if (isFLoop) {
         probs['F'] = Math.min(0.99, (probs['F'] || 0) + 0.35);
+        if (probs['O']) probs['O'] *= 0.05;
+      } else if (isORing) {
+        probs['O'] = Math.min(0.99, (probs['O'] || 0) + 0.35);
+        if (probs['F']) probs['F'] *= 0.05;
       }
     }
 
@@ -287,9 +299,16 @@ export class LearnedASLClassifier {
         probs['R'] = Math.min(0.99, (probs['R'] || 0) + 0.25);
       }
 
-      // F: Thumb and index touching in ring, 3 fingers extended
-      if (cleanTarget === 'F' && pIdxTip <= 0.60 && mCurl <= 0.68 && rCurl <= 0.68 && pCurl <= 0.68) {
+      // F: Thumb and index touching in ring, 3 fingers standing tall (never curled like O)
+      if (cleanTarget === 'F' && pIdxTip <= 0.60 && mCurl <= 0.52 && rCurl <= 0.55 && pCurl <= 0.58 && pMidTip >= 0.55) {
         probs['F'] = Math.min(0.99, (probs['F'] || 0) + 0.35);
+        if (probs['O']) probs['O'] *= 0.05;
+      }
+
+      // O: All fingertips meeting thumb tip in a circular ring
+      if (cleanTarget === 'O' && pIdxTip <= 0.60 && pMidTip <= 0.60 && mCurl >= 0.40) {
+        probs['O'] = Math.min(0.99, (probs['O'] || 0) + 0.35);
+        if (probs['F']) probs['F'] *= 0.05;
       }
 
       // U: Upright index and middle extended together

@@ -98,7 +98,9 @@ const CLUSTERS: Record<string, string[]> = {
   'K': ['K', 'V', 'U', 'D', 'P'],
   'H': ['H', 'U', 'G', 'Z'],
   // 3-finger flared with index-thumb loop:
-  'F': ['F', 'B', 'D', 'W', 'O', '9'],
+  'F': ['F', 'B', 'D', 'W', '9'],
+  // Oval / circular shapes:
+  'O': ['O', 'C', 'E'],
   // Index-pointing / horizontal variants:
   'G': ['G', 'Q', 'H', 'D', 'Z'],
   'Q': ['Q', 'G', 'P'],

@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SignDefinition, RecognitionEvaluation, Landmark3D, StudentProfile, FaceLandmarkData } from '../types';
 import { SIGN_DATABASE, GET_SIGN_BY_ID } from '../data/signs';
+import { GAME_LEVELS, GameLevel, AssistStage, ASSIST_STAGES } from '../data/gameLevels';
+import { HandSignGraphic } from '../components/HandSignGraphic';
 import { WebcamHandTracker } from '../components/WebcamHandTracker';
 import { evaluateSign, resetHoldBuffer } from '../services/recognitionEngine';
 import { soundFx } from '../services/soundFx';
 import { recordAttemptApi } from '../services/api';
 import confetti from 'canvas-confetti';
 import { SpiralBinder } from '../components/SpiralBinder';
-import { Target, Flame, Sparkles, Clock, CheckCircle2, AlertTriangle, ArrowRight, RotateCcw } from 'lucide-react';
+import { Target, Flame, Sparkles, Clock, CheckCircle2, AlertTriangle, ArrowRight, RotateCcw, Eye, EyeOff } from 'lucide-react';
 
 interface PracticeViewProps {
   profile: StudentProfile | null;
@@ -24,10 +26,18 @@ export const PracticeView: React.FC<PracticeViewProps> = ({
   onToggleDemoMode,
   overrideSigns
 }) => {
+  // Level State: Default to Level 1 (Vowels) unless overrideSigns provided
+  const [selectedLevelId, setSelectedLevelId] = useState<number>(1);
+  const activeLevel = GAME_LEVELS.find(l => l.id === selectedLevelId) || GAME_LEVELS[0];
+
+  // Assist Stage: 'graphic' -> 'hint' -> 'none'
+  const [assistStage, setAssistStage] = useState<AssistStage>('graphic');
+  const [peekDiagram, setPeekDiagram] = useState<boolean>(false);
+
   // Pool of signs for practice
   const practicePool = overrideSigns && overrideSigns.length > 0 
     ? overrideSigns 
-    : ['B', 'D', 'A', 'C', 'HELLO', 'THANK YOU', '1', '2', 'PEACE'];
+    : activeLevel.signs;
 
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const currentSignId = practicePool[currentIndex % practicePool.length];
@@ -49,8 +59,9 @@ export const PracticeView: React.FC<PracticeViewProps> = ({
     setEvaluation(null);
     setIsCompletedCurrent(false);
     evaluatedRef.current = false;
+    setPeekDiagram(false);
     startTimeRef.current = Date.now();
-  }, [currentIndex]);
+  }, [currentIndex, selectedLevelId, assistStage]);
 
   const currentSignIdRef = useRef(currentSignId);
   currentSignIdRef.current = currentSignId;
@@ -81,8 +92,8 @@ export const PracticeView: React.FC<PracticeViewProps> = ({
       soundFx.playCombo(streakRef.current);
 
       confetti({
-        particleCount: 30,
-        spread: 50,
+        particleCount: 35,
+        spread: 55,
         origin: { y: 0.8 },
         colors: ['#10B981', '#06B6D4', '#F59E0B']
       });
@@ -112,74 +123,104 @@ export const PracticeView: React.FC<PracticeViewProps> = ({
     handleNextSign();
   };
 
+  const handleSelectLevel = (levelId: number) => {
+    setSelectedLevelId(levelId);
+    setCurrentIndex(0);
+  };
+
   const avgReaction = reactionTimes.length > 0
     ? Math.round(reactionTimes.reduce((a, b) => a + b, 0) / reactionTimes.length)
     : 1400;
 
   const accuracyPct = attemptsCount > 0 ? Math.round((successCount / attemptsCount) * 100) : 100;
 
-  return (
-    <div className="max-w-7xl mx-auto px-2 sm:px-4 py-3">
-      <SpiralBinder
-        title="DOJO DRILL: FLASHCARD ARENA"
-        subtitle="Dynamic practice calibrated to your hand posture. No harsh penalties — only XP!"
-        badge={`${currentIndex + 1}/${practicePool.length}`}
-        icon="🥋"
-      >
-        {/* Top Header / Stats Row */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-3 border-b-2 border-dashed border-[#94A3B8]">
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="text-[10px] font-pixel px-2 py-0.5 rounded bg-[#38BDF8] text-[#0F172A] border-2 border-[#0F172A] font-bold shadow-pixel-sm">
-                ADAPTIVE PRACTICE
-              </span>
-              {overrideSigns && (
-                <span className="text-[10px] font-pixel px-2 py-0.5 rounded bg-[#C084FC] text-[#0F172A] border-2 border-[#0F172A] font-bold shadow-pixel-sm">
-                  🎯 AI WEAKNESS FOCUS
-                </span>
-              )}
-            </div>
-            <h2 className="text-xl sm:text-2xl font-chunky text-[#0F172A] mt-1 tracking-wide">
-              Flashcard Drill #{currentIndex + 1} of {practicePool.length}
-            </h2>
-          </div>
+  const showGraphic = assistStage === 'graphic' || peekDiagram;
+  const showHints = assistStage !== 'none';
 
-          {/* Retro Performance Badges */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center space-x-1.5 bg-[#FEF08A] border-2 border-[#0F172A] px-3 py-1.5 rounded-xl shadow-pixel-sm font-pixel text-[11px] text-[#0F172A]">
-              <Flame className="w-3.5 h-3.5 text-[#DC2626] fill-red-400" />
-              <span>{streak} STREAK</span>
-            </div>
-            <div className="flex items-center space-x-1.5 bg-[#BAE6FD] border-2 border-[#0F172A] px-3 py-1.5 rounded-xl shadow-pixel-sm font-pixel text-[11px] text-[#0F172A]">
-              <Clock className="w-3.5 h-3.5 text-[#0284C7]" />
-              <span>{avgReaction}ms</span>
-            </div>
-            <div className="flex items-center space-x-1.5 bg-[#BBF7D0] border-2 border-[#0F172A] px-3 py-1.5 rounded-xl shadow-pixel-sm font-pixel text-[11px] text-[#0F172A]">
-              <CheckCircle2 className="w-3.5 h-3.5 text-[#16A34A]" />
-              <span>{accuracyPct}% ACC</span>
-            </div>
+  return (
+    <div className="max-w-7xl mx-auto px-2 sm:px-4 py-3 sm:py-5">
+      {/* ── TOP LEVEL SELECTOR ─────────────────────────────────────────── */}
+      <div className="mb-4 bg-white border-2 sm:border-3 border-[#0F172A] rounded-2xl p-2.5 sm:p-3 shadow-pixel">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center space-x-2">
+            <span className="text-xl">🎯</span>
+            <span className="font-pixel text-xs sm:text-sm font-black text-[#0F172A]">
+              PRACTICE BY LEVEL
+            </span>
           </div>
+          <span className="font-pixel text-[9px] sm:text-[10px] text-[#166534] bg-[#BBF7D0] px-2 py-0.5 rounded-lg border border-[#0F172A] font-bold">
+            {activeLevel.title}
+          </span>
         </div>
 
-        {/* 3-Column Layout */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          {GAME_LEVELS.map((lvl) => (
+            <button
+              key={lvl.id}
+              onClick={() => handleSelectLevel(lvl.id)}
+              className={`p-2 rounded-xl border-2 border-[#0F172A] transition-all text-left flex flex-col justify-between active:translate-y-0.5 ${
+                lvl.id === selectedLevelId
+                  ? `${lvl.color} shadow-pixel -translate-y-0.5 font-bold`
+                  : 'bg-slate-50 hover:bg-white text-slate-700'
+              }`}
+            >
+              <span className="font-pixel text-[8px] text-[#0F172A]">LVL {lvl.id}</span>
+              <span className="font-pixel text-[9px] font-black text-[#0F172A] truncate">{lvl.subtitle}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── ASSIST STAGE SELECTOR ────────────────────────────────────────── */}
+      <div className="mb-4 bg-[#FEF08A] border-2 sm:border-3 border-[#0F172A] rounded-2xl p-2 sm:p-2.5 shadow-pixel flex flex-col sm:flex-row items-center justify-between gap-2">
+        <span className="font-pixel text-[10px] font-bold text-[#854D0E] uppercase">
+          ASSIST TIER:
+        </span>
+        <div className="flex items-center space-x-1.5 w-full sm:w-auto">
+          {ASSIST_STAGES.map((stg) => (
+            <button
+              key={stg.id}
+              onClick={() => setAssistStage(stg.id)}
+              className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-xl font-pixel text-[9px] sm:text-[10px] font-bold border-2 border-[#0F172A] transition-all flex items-center justify-center space-x-1 active:translate-y-0.5 ${
+                assistStage === stg.id
+                  ? 'bg-white text-[#0F172A] shadow-pixel-sm -translate-y-0.5'
+                  : 'bg-white/50 text-[#713F12] hover:bg-white/80'
+              }`}
+            >
+              <span>{stg.icon}</span>
+              <span>{stg.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <SpiralBinder
+        title="PRACTICE ARENA"
+        subtitle={`${activeLevel.title} • DRILL CARD ${currentIndex + 1} OF ${practicePool.length}`}
+        badge={`ACCURACY: ${accuracyPct}%`}
+        icon="🎯"
+      >
+        {/* Practice Arena Content */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-4 items-stretch">
-          {/* Left: Challenge Prompt (Yellow Card) */}
+          
+          {/* LEFT: Target Card with Graphic Blueprint / Masking */}
           <div className="lg:col-span-4 flex flex-col justify-between bg-[#FEF08A] border-2 sm:border-3 border-[#0F172A] rounded-2xl p-3 sm:p-4 shadow-pixel">
             <div>
               <div className="flex items-center justify-between border-b-2 border-[#0F172A] pb-2 mb-2 sm:mb-3">
-                <span className="font-pixel text-[10px] sm:text-[11px] text-[#0F172A] uppercase font-bold tracking-wider">
-                  QUEST PROMPT
+                <span className="font-pixel text-[10px] text-[#0F172A] uppercase font-bold tracking-wider">
+                  TARGET CARD
                 </span>
-                <span className="font-pixel text-[9px] sm:text-[10px] bg-white border border-[#0F172A] px-2 py-0.5 rounded text-[#0F172A]">
+                <span className="font-pixel text-[9px] bg-white border border-[#0F172A] px-2 py-0.5 rounded text-[#0F172A] font-bold">
                   CARD #{currentIndex + 1}
                 </span>
               </div>
 
-              <div className="p-3 sm:p-4 bg-white rounded-xl border-2 border-[#0F172A] shadow-inner flex flex-col items-center justify-center my-1.5 sm:my-2">
-                <span className="text-[9px] sm:text-[10px] text-[#64748B] font-pixel uppercase font-bold mb-0.5">
+              {/* Big Sign Name */}
+              <div className="p-3 bg-white rounded-xl border-2 border-[#0F172A] shadow-inner flex flex-col items-center justify-center my-1.5">
+                <span className="text-[9px] text-[#64748B] font-pixel uppercase font-bold">
                   SHOW THIS SIGN
                 </span>
-                <span className="text-5xl sm:text-6xl font-black font-chunky text-[#0F172A] my-0.5">
+                <span className="text-4xl sm:text-5xl font-black font-chunky text-[#0F172A] my-0.5">
                   {targetSign.id}
                 </span>
                 <span className="text-xs font-bold text-[#475569] font-game">
@@ -187,18 +228,53 @@ export const PracticeView: React.FC<PracticeViewProps> = ({
                 </span>
               </div>
 
-              <div className="mt-2 sm:mt-3 p-2.5 sm:p-3 rounded-xl bg-[#FEF9C3] border-2 border-[#0F172A] text-xs">
-                <span className="font-pixel text-[9px] sm:text-[10px] text-[#B45309] block mb-0.5">💡 SENSEI TIP:</span>
-                <p className="text-[#0F172A] font-game text-[12px] sm:text-[13px] leading-snug">
-                  {targetSign.hints[0]}
-                </p>
-              </div>
+              {/* Graphic Blueprint or Hint Mask */}
+              {showGraphic ? (
+                <div className="my-2 flex flex-col items-center animate-fadeIn">
+                  <HandSignGraphic sign={targetSign} size="md" />
+                  {assistStage !== 'graphic' && (
+                    <button
+                      onClick={() => setPeekDiagram(false)}
+                      className="mt-1.5 text-[9px] font-pixel text-[#0284C7] underline flex items-center space-x-1"
+                    >
+                      <EyeOff className="w-3 h-3" />
+                      <span>HIDE BLUEPRINT</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="my-2 p-4 bg-white/70 border-2 border-dashed border-[#0F172A] rounded-xl flex flex-col items-center justify-center text-center">
+                  <span className="text-2xl mb-1">{assistStage === 'hint' ? '💡' : '🧠'}</span>
+                  <span className="font-pixel text-[9px] text-[#0F172A] font-bold">
+                    {assistStage === 'hint' ? 'BLUEPRINT HIDDEN' : 'NO ASSIST MODE'}
+                  </span>
+                  {assistStage === 'hint' && (
+                    <button
+                      onClick={() => setPeekDiagram(true)}
+                      className="mt-2 px-2.5 py-1 rounded-lg bg-[#38BDF8] text-white font-pixel text-[8px] font-bold border border-[#0F172A] shadow-pixel-sm flex items-center space-x-1"
+                    >
+                      <Eye className="w-3 h-3" />
+                      <span>PEEK BLUEPRINT</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* SENSEI TIP */}
+              {showHints && (
+                <div className="mt-2 p-2.5 rounded-xl bg-[#FEF9C3] border-2 border-[#0F172A] text-xs">
+                  <span className="font-pixel text-[9px] text-[#B45309] block mb-0.5">💡 SENSEI TIP:</span>
+                  <p className="text-[#0F172A] font-game text-[12px] leading-snug">
+                    {targetSign.hints[0]}
+                  </p>
+                </div>
+              )}
             </div>
 
-            <div className="mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t-2 border-[#0F172A] flex items-center justify-between gap-2">
+            <div className="mt-3 pt-2.5 border-t-2 border-[#0F172A] flex items-center justify-between gap-2">
               <button
                 onClick={handleSkip}
-                className="min-h-[38px] px-3 py-2 rounded-xl bg-white hover:bg-slate-100 text-[#0F172A] text-[10px] font-pixel border-2 border-[#0F172A] shadow-pixel-sm active:translate-y-0.5 transition-all"
+                className="px-3 py-2 rounded-xl bg-white hover:bg-slate-100 text-[#0F172A] text-[10px] font-pixel border-2 border-[#0F172A] shadow-pixel-sm active:translate-y-0.5 transition-all"
               >
                 Skip Card
               </button>
@@ -206,16 +282,16 @@ export const PracticeView: React.FC<PracticeViewProps> = ({
               {isCompletedCurrent && (
                 <button
                   onClick={handleNextSign}
-                  className="min-h-[38px] px-4 py-2 rounded-xl bg-[#4ADE80] hover:bg-[#22C55E] text-[#0F172A] text-xs font-pixel border-2 sm:border-3 border-[#0F172A] shadow-pixel flex items-center space-x-2 active:translate-y-1 transition-all animate-bounce"
+                  className="px-4 py-2 rounded-xl bg-[#4ADE80] hover:bg-[#22C55E] text-[#0F172A] text-xs font-pixel border-2 border-[#0F172A] shadow-pixel flex items-center space-x-2 active:translate-y-1 transition-all animate-bounce"
                 >
-                  <span>NEXT ({practicePool.length - (currentIndex + 1)})</span>
+                  <span>NEXT SIGN</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               )}
             </div>
           </div>
 
-          {/* Center: Live Camera (5 cols) */}
+          {/* CENTER: Webcam Tracker */}
           <div className="lg:col-span-5 flex flex-col">
             <WebcamHandTracker
               targetSignId={currentSignId}
@@ -226,64 +302,51 @@ export const PracticeView: React.FC<PracticeViewProps> = ({
             />
           </div>
 
-          {/* Right: Feedback & Diagnostic Bar (3 cols) */}
-          <div className="lg:col-span-3 flex flex-col justify-between bg-[#FEF08A] border-2 sm:border-3 border-[#0F172A] rounded-2xl p-3 sm:p-4 shadow-pixel">
+          {/* RIGHT: Live Biometrics & Stats */}
+          <div className="lg:col-span-3 flex flex-col justify-between bg-white border-2 sm:border-3 border-[#0F172A] rounded-2xl p-3 sm:p-4 shadow-pixel">
             <div>
-              <div className="flex items-center justify-between pb-2 border-b-2 border-[#0F172A] mb-3">
-                <span className="font-pixel text-[11px] text-[#0F172A] uppercase font-bold">AI Scanner</span>
-                <span className={`font-pixel text-[10px] px-2 py-0.5 rounded border border-[#0F172A] font-bold ${
-                  isCompletedCurrent 
-                    ? 'bg-[#4ADE80] text-[#0F172A]' 
-                    : 'bg-white text-[#64748B]'
-                }`}>
-                  {isCompletedCurrent ? '✓ MATCH!' : 'SEARCHING'}
+              <div className="border-b-2 border-[#0F172A] pb-2 mb-3">
+                <span className="font-pixel text-[10px] text-[#0F172A] uppercase font-bold tracking-wider">
+                  DRILL STATS
                 </span>
               </div>
 
-              {/* Confidence gauge */}
-              <div className="text-center p-3 bg-white rounded-xl border-2 border-[#0F172A] shadow-inner mb-3">
-                <span className="font-pixel text-[9px] text-[#64748B] block mb-1">MATCH CONFIDENCE</span>
-                <span className={`text-4xl font-black font-pixel ${
-                  (evaluation?.confidence || 0) >= 80 ? 'text-[#16A34A]' : 'text-[#D97706]'
-                }`}>
-                  {evaluation?.confidence || 0}%
-                </span>
-              </div>
-
-              {/* Quick status checks */}
-              <div className="space-y-1.5 text-xs font-game">
-                <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-[#0F172A]">
-                  <span className="text-[#475569] font-bold text-[11px]">Hand Shape:</span>
-                  <span className={`font-pixel text-[10px] ${evaluation?.shapeStatus === 'correct' ? 'text-[#16A34A]' : 'text-[#D97706]'}`}>
-                    {evaluation?.shapeStatus === 'correct' ? '✓ OK' : '⚠ Adjust'}
-                  </span>
+              <div className="space-y-2 mb-4">
+                <div className="flex items-center justify-between p-2 rounded-xl bg-[#FEF08A] border-2 border-[#0F172A]">
+                  <span className="font-pixel text-[9px] text-[#0F172A]">STREAK</span>
+                  <span className="font-pixel text-xs text-[#DC2626] font-bold">🔥 {streak}</span>
                 </div>
-                <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-[#0F172A]">
-                  <span className="text-[#475569] font-bold text-[11px]">Palm Angle:</span>
-                  <span className={`font-pixel text-[10px] ${evaluation?.orientationStatus === 'correct' ? 'text-[#16A34A]' : 'text-[#D97706]'}`}>
-                    {evaluation?.orientationStatus === 'correct' ? '✓ OK' : '⚠ Adjust'}
-                  </span>
+                <div className="flex items-center justify-between p-2 rounded-xl bg-[#BAE6FD] border-2 border-[#0F172A]">
+                  <span className="font-pixel text-[9px] text-[#0F172A]">AVG TIME</span>
+                  <span className="font-pixel text-xs text-[#0284C7] font-bold">{avgReaction}ms</span>
                 </div>
-                <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-[#0F172A]">
-                  <span className="text-[#475569] font-bold text-[11px]">Framing:</span>
-                  <span className={`font-pixel text-[10px] ${evaluation?.positionStatus === 'correct' ? 'text-[#16A34A]' : 'text-[#D97706]'}`}>
-                    {evaluation?.positionStatus === 'correct' ? '✓ OK' : '⚠ Center'}
-                  </span>
+                <div className="flex items-center justify-between p-2 rounded-xl bg-[#BBF7D0] border-2 border-[#0F172A]">
+                  <span className="font-pixel text-[9px] text-[#0F172A]">ACCURACY</span>
+                  <span className="font-pixel text-xs text-[#16A34A] font-bold">{accuracyPct}%</span>
                 </div>
               </div>
 
-              {/* Feedback dialog */}
-              <div className="mt-3 p-2.5 rounded-xl bg-[#BAE6FD] border-2 border-[#0F172A] text-xs">
-                <span className="font-pixel text-[9px] text-[#0369A1] block mb-0.5">SENSEI'S NOTE:</span>
-                <p className="text-[#0F172A] font-game text-[12px] leading-tight">
-                  {evaluation?.feedbackMessage || "Keep fingers steady in view for instant recognition."}
-                </p>
-              </div>
+              {evaluation && (
+                <div className="p-2.5 rounded-xl bg-slate-50 border-2 border-[#0F172A]">
+                  <span className="font-pixel text-[9px] text-[#64748B] block mb-1">LIVE CONFIDENCE</span>
+                  <div className="w-full bg-slate-200 h-3 rounded-full overflow-hidden border border-[#0F172A]">
+                    <div
+                      className={`h-full transition-all duration-150 ${
+                        evaluation.confidence >= 80 ? 'bg-[#10B981]' : (evaluation.confidence >= 50 ? 'bg-[#F59E0B]' : 'bg-[#EF4444]')
+                      }`}
+                      style={{ width: `${evaluation.confidence}%` }}
+                    />
+                  </div>
+                  <span className="font-pixel text-[9px] text-right block mt-1 font-bold">
+                    {Math.round(evaluation.confidence)}%
+                  </span>
+                </div>
+              )}
             </div>
 
-            <div className="mt-4 pt-3 border-t-2 border-[#0F172A] text-center bg-white rounded-xl p-2 border border-[#0F172A]">
-              <span className="font-pixel text-[10px] text-[#0F172A]">
-                EARNED: <strong className="text-[#16A34A]">+{xpEarnedTotal} XP</strong>
+            <div className="mt-4 pt-3 border-t-2 border-[#0F172A]">
+              <span className="font-pixel text-[8px] text-[#64748B] block text-center">
+                HOLD SHAPE STEADY FOR 350MS
               </span>
             </div>
           </div>

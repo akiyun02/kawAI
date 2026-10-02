@@ -103,10 +103,87 @@ When presenting in environments with poor lighting, strict webcam permissions, o
 
 ---
 
+## 🏛️ System Architecture
+
+KawAI runs an end-to-end edge AI pipeline directly in the browser at 30–60 FPS with zero cloud roundtrip latency and complete data privacy:
+
+```mermaid
+flowchart TD
+    subgraph ClientLayer["🖥️ BROWSER RUNTIME (100% Client-Side Edge AI)"]
+        subgraph Input["1. Input & Vision Ingestion"]
+            Cam["📷 Video Stream / Webcam\n(requestVideoFrameCallback)"]
+            MPS["⚡ MediaPipe Hands Service\n(Singleton WASM / WebGL SIMD)"]
+            Sim["🎮 Virtual 3D Hand Simulator\n(Fail-Safe Demo Mode)"]
+        end
+
+        subgraph Normalization["2. 3D Biomechanical Kinematics"]
+            Norm["📐 Canonical Normalizer\n• Wrist-to-MCP local coordinate axes\n• Scale, translation & roll invariance\n• Global camera angle θ (Upright vs Horizontal)"]
+            Kin["🖐️ Kinematic Feature Extractor\n• 5 Finger Curls (tip-to-wrist extRatio)\n• 4 Intersubject Spreads\n• 6 Anatomical Proximity Distances"]
+            Feat["📊 78-D Vector (63 Canonical + 15 Kinematic)"]
+        end
+
+        subgraph Classification["3. Hybrid ML Inference Engine"]
+            RF["🌲 Learned ASL Random Forest\n(26 ASL classes • 150+ trees)"]
+            OrientFilter["🧭 Orientation & Posture Disambiguator\n• U vs H: Global θ angle transfer\n• O vs F: Loop contact vs upright 3-finger flare"]
+            MotionTracker["⚡ 2D/3D Motion Trajectory Engine\n(Directional velocity for J & Z)"]
+        end
+
+        subgraph Temporal["4. Temporal State Machine & Pedagogy"]
+            Decoder["⏱️ Temporal Decoder (Hysteresis)\nIDLE ➔ FORMING ➔ CANDIDATE ➔ CONFIRMED"]
+            Scaffold["🎓 Cognitive Fading Scaffolding\nStage 1: Graphic Blueprint ➔ Stage 2: Hints ➔ Stage 3: No Assist"]
+        end
+
+        subgraph Presentation["5. Gamified UI & Interaction"]
+            Canvas["🎨 2D Skeleton Canvas Overlay"]
+            Audio["🔊 Web Audio API Synthesizer (Chiptune SFX)"]
+            UI["🏆 Level Codex, Speedrun, Boss Battle & Quest Hub"]
+        end
+    end
+
+    subgraph BackendLayer["☁️ OPTIONAL TELEMETRY BACKEND"]
+        API["⚡ FastAPI REST Server (Python 3.13)"]
+        DB["💾 SQLite / SQLAlchemy Student Progress DB"]
+    end
+
+    Cam --> MPS
+    MPS --> Norm
+    Sim --> Norm
+    Norm --> Kin
+    Kin --> Feat
+    Feat --> RF
+    RF --> OrientFilter
+    OrientFilter --> MotionTracker
+    MotionTracker --> Decoder
+    Decoder --> Scaffold
+    Scaffold --> UI
+    Scaffold --> Canvas
+    Scaffold --> Audio
+    UI -.->|"Async HTTP Attempt Telemetry"| API
+    API --> DB
+```
+
+### High-Level Architectural Flow
+1. **High-Performance Ingestion**: The camera stream feeds into a pre-warmed singleton `MediaPipeService` utilizing `requestVideoFrameCallback` to synchronize frame decoding with display refresh rates at near-zero CPU idle overhead.
+2. **Canonical Hand Space**: 21 raw $(x,y,z)$ coordinates are projected into an invariant hand coordinate frame aligned along the middle metacarpal axis.
+3. **Hybrid Classification**: The 78-dimensional feature vector is simultaneously passed to the Random Forest model and our orientation filters (disambiguating sister signs like **U vs H** and **O vs F**).
+4. **Hysteresis Temporal Decoder**: Eliminates single-frame webcam jitter through a 350ms evidence accumulation buffer before triggering gamified rewards.
+5. **Scaffolded Learning Progression**: Fades assistance from **Graphic Blueprints** (Level 1 Vowels) to **Hints Only** to **No-Assist Blind Recall**.
+
+---
+
 ## 🏗️ Technical Stack
-- **Frontend**: React 19, TypeScript, Vite, Tailwind CSS, MediaPipe Hands, Lucide Icons, Web Audio API synthesizer.
-- **Machine Learning**: 26-Class Learned ASL Model (trained on real ASL signers) + Canonical Kinematics Normalizer + Multi-Frame Temporal Decoder.
-- **Backend (Optional Telemetry)**: FastAPI, SQLite / SQLAlchemy, Pydantic, Python 3.13.
+
+| Layer | Technologies Used | Key Purpose |
+| :--- | :--- | :--- |
+| **Frontend Framework** | **React 19, TypeScript 5.8, Vite 8.3** | High-performance reactive UI, strict type safety, instant HMR, optimized bundle chunking. |
+| **Edge Computer Vision** | **MediaPipe Hands (WASM / WebGL SIMD)** | 21-landmark 3D hand articulation tracking in-browser at 30+ FPS without server processing. |
+| **Machine Learning** | **Random Forest Classifier (Ensemble of 150+ Decision Trees)** | Real-time classification trained on ASL signer datasets with leaf probability accumulation. |
+| **Biomechanical Analysis**| **Vector Kinematics & Euler Angle Normalizer** | Scale-invariant finger curl ratio, inter-finger abduction spread, and palm normal 3D vectors. |
+| **Temporal Decoding** | **Hysteresis State Machine & Motion Signatures** | Continuous evidence accumulation, transition suppression, and directional path integration for dynamic signs (J & Z). |
+| **Audio Engine** | **Web Audio API (Custom Chiptune Synthesizer)** | Procedural arpeggios, streak combo chimes, and retro 8-bit sound effects with zero external audio assets. |
+| **Styling & Retro Theme**| **Tailwind CSS 3.4, Lucide Icons, Canvas Confetti** | Chunky arcade handheld aesthetic, responsive layout, dark/light contrast, accessible text. |
+| **Backend & Telemetry** | **FastAPI, Python 3.13, SQLite, SQLAlchemy, Pydantic** | Optional student telemetry storage, class metrics, confusion matrix benchmarks, and analytics. |
+| **Deployment & Hosting**| **Vercel Edge Platform** | Zero-config continuous deployment with SPA rewrites and edge CDN caching. |
 
 ---
 

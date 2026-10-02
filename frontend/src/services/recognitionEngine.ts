@@ -655,16 +655,38 @@ export function evaluateSign(
       const upperThreeUp = (middle.isExtended || middle.extensionRatio >= 0.56) &&
                            (ring.isExtended || ring.extensionRatio >= 0.56) &&
                            (pinky.isExtended || pinky.extensionRatio >= 0.56);
+      const isCurlingAllFingers = thumb.distToMiddleTip <= 0.44;
 
       if (!upperThreeUp) {
         passesCanonical = false;
         issues.push("Extend middle, ring, and pinky fingers straight up for 'F'.");
+      } else if (isCurlingAllFingers) {
+        passesCanonical = false;
+        issues.push("Keep middle, ring, and pinky upright for 'F' (touching all fingers to thumb is 'O').");
       } else if (index.isExtended && index.extensionRatio > 0.72) {
         passesCanonical = false;
         issues.push("Touch your index fingertip to your thumb tip.");
       } else if (!circleClosed) {
         passesCanonical = false;
         issues.push("Bring index fingertip and thumb tip together to form a ring for 'F'.");
+      }
+      shapeScore = passesCanonical ? 98 : 42;
+      break;
+    }
+
+    case 'O': {
+      // All 4 fingertips curved down touching thumb tip to form an 'O' ring
+      const distToMiddle = thumb.distToMiddleTip;
+      const distToIndex = thumb.distToIndexTip;
+      const tipsMeetingThumb = distToIndex <= 0.60 && distToMiddle <= 0.60;
+      const anyExtendedStraight = middle.isExtended || ring.isExtended || pinky.isExtended || (index.isExtended && index.extensionRatio > 0.72);
+
+      if (anyExtendedStraight) {
+        passesCanonical = false;
+        issues.push("Curve all fingers down to touch thumb for 'O' (leaving 3 fingers up is 'F').");
+      } else if (!tipsMeetingThumb) {
+        passesCanonical = false;
+        issues.push("Bring all fingertips and thumb tip together to form an 'O' shape.");
       }
       shapeScore = passesCanonical ? 98 : 42;
       break;

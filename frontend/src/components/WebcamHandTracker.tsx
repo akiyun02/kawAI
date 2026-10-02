@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Landmark3D, RecognitionEvaluation, FaceLandmarkData } from '../types';
 import { renderHandMesh } from '../services/handCanvasRenderer';
 import { generateSimulatedLandmarks } from '../services/recognitionEngine';
+import { mediaPipeService } from '../services/mediaPipeService';
 import { AlertCircle, Camera, CheckCircle2, RotateCw, Sparkles, Sliders, RefreshCw, SwitchCamera } from 'lucide-react';
 
 interface WebcamHandTrackerProps {
@@ -167,7 +168,9 @@ export const WebcamHandTracker: React.FC<WebcamHandTrackerProps> = ({
     };
   }, [demoMode]);
 
-  // Real Camera with MediaPipe Hands
+  // Real Camera with High-Performance Singleton MediaPipe Engine
+  const [engineReady, setEngineReady] = useState<boolean>(mediaPipeService.isReady);
+
   useEffect(() => {
     if (demoMode) {
       stopCamera();
@@ -176,142 +179,67 @@ export const WebcamHandTracker: React.FC<WebcamHandTrackerProps> = ({
 
     startCamera();
 
-    let handsInstance: any = null;
-    let faceDetectorInstance: any = null;
-    let isProcessing = false;
-    let isFaceProcessing = false;
     let active = true;
-    let lastInferenceTime = 0;
-    let lastFaceTime = 0;
-    let latestFaceData: FaceLandmarkData | null = null;
+    const needsFace = ['HELLO', 'THANK YOU'].includes(targetSignIdRef.current);
 
-    const win = window as any;
+    // Register callback with singleton MediaPipe service
+    mediaPipeService.registerCallback((landmarks: Landmark3D[], faceData: FaceLandmarkData | null, handedness: 'Left' | 'Right') => {
+      if (!active) return;
+      setEngineReady(true);
 
-    // 1. Initialize MediaPipe Face Detection for spatial articulatory anchoring
-    if (win.FaceDetection) {
-      try {
-        faceDetectorInstance = new win.FaceDetection({
-          locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`
-        });
-        faceDetectorInstance.setOptions({
-          model: 'short',
-          minDetectionConfidence: 0.4
-        });
-        faceDetectorInstance.onResults((results: any) => {
-          if (!active) return;
-          if (results.detections && results.detections.length > 0) {
-            const det = results.detections[0];
-            const lms = det.landmarks;
-            if (lms && lms.length >= 4) {
-              latestFaceData = {
-                rightEye: { x: lms[0].x, y: lms[0].y, z: lms[0].z || 0 },
-                leftEye: { x: lms[1].x, y: lms[1].y, z: lms[1].z || 0 },
-                noseTip: { x: lms[2].x, y: lms[2].y, z: lms[2].z || 0 },
-                mouthCenter: { x: lms[3].x, y: lms[3].y, z: lms[3].z || 0 },
-                rightEar: lms[4] ? { x: lms[4].x, y: lms[4].y, z: lms[4].z || 0 } : undefined,
-                leftEar: lms[5] ? { x: lms[5].x, y: lms[5].y, z: lms[5].z || 0 } : undefined,
-                box: det.boundingBox
-              };
-            }
-          } else {
-            latestFaceData = null;
-          }
-        });
-      } catch (err) {
-        console.warn('Face detection init error:', err);
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      if (landmarks && landmarks.length > 0) {
+        setHandDetected(true);
+        const now = performance.now();
+        if (now - lastEmitTimeRef.current >= 28) {
+          lastEmitTimeRef.current = now;
+          onLandmarksRef.current(landmarks, faceData, handedness);
+        }
+        renderHandMesh(ctx, canvas.width, canvas.height, landmarks, evaluationRef.current, true, faceData);
+      } else {
+        setHandDetected(false);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        renderHandMesh(ctx, canvas.width, canvas.height, [], null, true, faceData);
       }
-    }
+    });
 
-    // 2. Initialize MediaPipe Hands
-    if (win.Hands) {
-      try {
-        handsInstance = new win.Hands({
-          locateFile: (file: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-        });
+    // Start video processing loop using requestVideoFrameCallback (hardware vsync) or rAF
+    const video = videoRef.current;
+    let videoCallbackId: number | null = null;
 
-        handsInstance.setOptions({
-          maxNumHands: 1,
-          modelComplexity: 0,
-          minDetectionConfidence: 0.5,
-          minTrackingConfidence: 0.5
-        });
-
-        handsInstance.onResults((results: any) => {
-          if (!active) return;
-          const canvas = canvasRef.current;
-          if (!canvas) return;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return;
-
-          if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-            setHandDetected(true);
-            const raw = results.multiHandLandmarks[0];
-            const handedness = (results.multiHandedness?.[0]?.label as 'Left' | 'Right') || 'Right';
-            const landmarks: Landmark3D[] = raw.map((lm: any) => ({
-              x: lm.x,
-              y: lm.y,
-              z: lm.z || 0
-            }));
-
-            // Emit landmarks smoothly at native tracking rate (~30 FPS)
-            const now = performance.now();
-            if (now - lastEmitTimeRef.current >= 28) {
-              lastEmitTimeRef.current = now;
-              onLandmarksRef.current(landmarks, latestFaceData, handedness);
-            }
-
-            renderHandMesh(ctx, canvas.width, canvas.height, landmarks, evaluationRef.current, true, latestFaceData);
-          } else {
-            setHandDetected(false);
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            renderHandMesh(ctx, canvas.width, canvas.height, [], null, true, latestFaceData);
-          }
-        });
-
-        // Frame sending running at native ~30 FPS (every 28ms) for smooth temporal tracking
-        const sendVideoFrame = async () => {
-          if (!active) return;
-          const now = performance.now();
-
-          if (now - lastInferenceTime >= 28 && videoRef.current && videoRef.current.readyState >= 2 && handsInstance && !isProcessing) {
-            lastInferenceTime = now;
-            isProcessing = true;
-            try {
-              await handsInstance.send({ image: videoRef.current });
-            } catch (_) {
-            } finally {
-              isProcessing = false;
-            }
-          }
-
-          if (now - lastFaceTime >= 140 && videoRef.current && videoRef.current.readyState >= 2 && faceDetectorInstance && !isFaceProcessing) {
-            lastFaceTime = now;
-            isFaceProcessing = true;
-            faceDetectorInstance.send({ image: videoRef.current })
-              .catch(() => {})
-              .finally(() => { isFaceProcessing = false; });
-          }
-
-          videoLoopRef.current = requestAnimationFrame(sendVideoFrame);
-        };
-
-        videoLoopRef.current = requestAnimationFrame(sendVideoFrame);
-      } catch (e) {
-        console.warn('MediaPipe initialization warning:', e);
+    const processLoop = () => {
+      if (!active) return;
+      if (videoRef.current && videoRef.current.readyState >= 2) {
+        mediaPipeService.processFrame(videoRef.current, needsFace);
       }
+
+      if (video && 'requestVideoFrameCallback' in video) {
+        videoCallbackId = (video as any).requestVideoFrameCallback(processLoop);
+      } else {
+        videoLoopRef.current = requestAnimationFrame(processLoop);
+      }
+    };
+
+    // Kick off loop
+    if (video && 'requestVideoFrameCallback' in video) {
+      videoCallbackId = (video as any).requestVideoFrameCallback(processLoop);
+    } else {
+      videoLoopRef.current = requestAnimationFrame(processLoop);
     }
 
     return () => {
       active = false;
+      mediaPipeService.unregisterCallback();
       if (videoLoopRef.current) {
         cancelAnimationFrame(videoLoopRef.current);
         videoLoopRef.current = null;
       }
-      if (handsInstance) {
-        try { handsInstance.close(); } catch (_) {}
-      }
-      if (faceDetectorInstance) {
-        try { faceDetectorInstance.close(); } catch (_) {}
+      if (video && videoCallbackId !== null && 'cancelVideoFrameCallback' in video) {
+        (video as any).cancelVideoFrameCallback(videoCallbackId);
       }
       stopCamera();
     };
@@ -430,6 +358,14 @@ export const WebcamHandTracker: React.FC<WebcamHandTrackerProps> = ({
         <div className="absolute bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 z-20 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-white border-2 border-[#0F172A] shadow-pixel flex items-center space-x-1.5 font-pixel text-[8px] sm:text-[9px] text-[#0F172A] whitespace-nowrap">
           <AlertCircle className="w-3 h-3 text-[#0284C7] animate-pulse" />
           <span>POSITION HAND IN FRAME 🖐</span>
+        </div>
+      )}
+
+      {/* Engine Warming Indicator */}
+      {!demoMode && !cameraError && !engineReady && (
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-20 px-3 py-1.5 rounded-xl bg-[#FEF08A] border-2 border-[#0F172A] shadow-pixel flex items-center space-x-2 font-pixel text-[8px] sm:text-[9px] text-[#0F172A] animate-pulse">
+          <RefreshCw className="w-3 h-3 text-[#B45309] animate-spin" />
+          <span>INITIALIZING KAWAII AI...</span>
         </div>
       )}
 
