@@ -17,9 +17,9 @@ venv/
 .venv/
 env/
 
-# Dataset and model cache
-data/
-ml/data/
+# Root dataset and model cache (leading slash anchors to root only)
+/data/
+/ml/data/
 .cache/
 
 # System and logs

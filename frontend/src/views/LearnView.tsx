@@ -104,7 +104,7 @@ export const LearnView: React.FC<LearnViewProps> = ({
 
   const handleNext = () => {
     resetHoldBuffer();
-    const currentIndex = SIGN_DATABASE.findIndex(s => s.id === currentSignId);
+    const currentIndex = SIGN_DATABASE.findIndex((s: SignDefinition) => s.id === currentSignId);
     const nextIndex = (currentIndex + 1) % SIGN_DATABASE.length;
     setCurrentSignId(SIGN_DATABASE[nextIndex].id);
   };
