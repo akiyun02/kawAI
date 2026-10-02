@@ -50,9 +50,13 @@ export const PracticeView: React.FC<PracticeViewProps> = ({
   const [reactionTimes, setReactionTimes] = useState<number[]>([]);
   const [xpEarnedTotal, setXpEarnedTotal] = useState<number>(0);
   const [isCompletedCurrent, setIsCompletedCurrent] = useState<boolean>(false);
+  const [autoAdvance, setAutoAdvance] = useState<boolean>(true);
 
   const startTimeRef = useRef<number>(Date.now());
   const evaluatedRef = useRef<boolean>(false);
+  const autoAdvanceRef = useRef<boolean>(autoAdvance);
+  autoAdvanceRef.current = autoAdvance;
+  const autoNextTimerRef = useRef<any>(null);
 
   useEffect(() => {
     resetHoldBuffer();
@@ -61,6 +65,9 @@ export const PracticeView: React.FC<PracticeViewProps> = ({
     evaluatedRef.current = false;
     setPeekDiagram(false);
     startTimeRef.current = Date.now();
+    return () => {
+      if (autoNextTimerRef.current) clearTimeout(autoNextTimerRef.current);
+    };
   }, [currentIndex, selectedLevelId, assistStage]);
 
   const currentSignIdRef = useRef(currentSignId);
@@ -71,6 +78,14 @@ export const PracticeView: React.FC<PracticeViewProps> = ({
   profileRef.current = profile;
   const onRefreshProfileRef = useRef(onRefreshProfile);
   onRefreshProfileRef.current = onRefreshProfile;
+
+  const handleNextSign = useCallback(() => {
+    if (autoNextTimerRef.current) {
+      clearTimeout(autoNextTimerRef.current);
+      autoNextTimerRef.current = null;
+    }
+    setCurrentIndex(prev => prev + 1);
+  }, []);
 
   const handleLandmarks = useCallback((landmarks: Landmark3D[], faceData?: FaceLandmarkData | null, handedness?: 'Left' | 'Right') => {
     const signId = currentSignIdRef.current;
@@ -98,6 +113,13 @@ export const PracticeView: React.FC<PracticeViewProps> = ({
         colors: ['#10B981', '#06B6D4', '#F59E0B']
       });
 
+      if (autoAdvanceRef.current) {
+        if (autoNextTimerRef.current) clearTimeout(autoNextTimerRef.current);
+        autoNextTimerRef.current = setTimeout(() => {
+          handleNextSign();
+        }, 1250);
+      }
+
       recordAttemptApi({
         student_id: profileRef.current?.id || 'student-alex',
         sign_id: signId,
@@ -111,19 +133,23 @@ export const PracticeView: React.FC<PracticeViewProps> = ({
         feedback: result.feedbackMessage
       }).then(() => onRefreshProfileRef.current());
     }
-  }, []);
-
-  const handleNextSign = () => {
-    setCurrentIndex(prev => prev + 1);
-  };
+  }, [handleNextSign]);
 
   const handleSkip = () => {
+    if (autoNextTimerRef.current) {
+      clearTimeout(autoNextTimerRef.current);
+      autoNextTimerRef.current = null;
+    }
     setAttemptsCount(prev => prev + 1);
     setStreak(Math.max(0, streak - 1));
     handleNextSign();
   };
 
   const handleSelectLevel = (levelId: number) => {
+    if (autoNextTimerRef.current) {
+      clearTimeout(autoNextTimerRef.current);
+      autoNextTimerRef.current = null;
+    }
     setSelectedLevelId(levelId);
     setCurrentIndex(0);
   };
@@ -141,16 +167,28 @@ export const PracticeView: React.FC<PracticeViewProps> = ({
     <div className="max-w-7xl mx-auto px-2 sm:px-4 py-3 sm:py-5">
       {/* ── TOP LEVEL SELECTOR ─────────────────────────────────────────── */}
       <div className="mb-4 bg-white border-2 sm:border-3 border-[#0F172A] rounded-2xl p-2.5 sm:p-3 shadow-pixel">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
           <div className="flex items-center space-x-2">
             <span className="text-xl">🎯</span>
             <span className="font-pixel text-xs sm:text-sm font-black text-[#0F172A]">
               PRACTICE BY LEVEL
             </span>
           </div>
-          <span className="font-pixel text-[9px] sm:text-[10px] text-[#166534] bg-[#BBF7D0] px-2 py-0.5 rounded-lg border border-[#0F172A] font-bold">
-            {activeLevel.title}
-          </span>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setAutoAdvance(prev => !prev)}
+              className={`px-2.5 py-1 rounded-xl border-2 border-[#0F172A] font-pixel text-[9px] sm:text-[10px] font-bold shadow-pixel-sm transition-all flex items-center space-x-1.5 active:translate-y-0.5 ${
+                autoAdvance
+                  ? 'bg-[#22C55E] text-white'
+                  : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              <span>⚡ AUTO-NEXT: {autoAdvance ? 'ON' : 'OFF'}</span>
+            </button>
+            <span className="font-pixel text-[9px] sm:text-[10px] text-[#166534] bg-[#BBF7D0] px-2 py-1 rounded-lg border border-[#0F172A] font-bold">
+              {activeLevel.title}
+            </span>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
@@ -280,13 +318,20 @@ export const PracticeView: React.FC<PracticeViewProps> = ({
               </button>
 
               {isCompletedCurrent && (
-                <button
-                  onClick={handleNextSign}
-                  className="px-4 py-2 rounded-xl bg-[#4ADE80] hover:bg-[#22C55E] text-[#0F172A] text-xs font-pixel border-2 border-[#0F172A] shadow-pixel flex items-center space-x-2 active:translate-y-1 transition-all animate-bounce"
-                >
-                  <span>NEXT SIGN</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
+                <div className="flex flex-col items-end">
+                  <button
+                    onClick={handleNextSign}
+                    className="px-4 py-2 rounded-xl bg-[#4ADE80] hover:bg-[#22C55E] text-[#0F172A] text-xs font-pixel border-2 border-[#0F172A] shadow-pixel flex items-center space-x-2 active:translate-y-1 transition-all animate-bounce"
+                  >
+                    <span>NEXT SIGN</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                  {autoAdvance && (
+                    <span className="font-pixel text-[8px] text-[#15803D] mt-1">
+                      ⚡ AUTO-ADVANCING...
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           </div>

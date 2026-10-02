@@ -10,7 +10,7 @@ import { soundFx } from '../services/soundFx';
 import { recordAttemptApi } from '../services/api';
 import { SpiralBinder } from '../components/SpiralBinder';
 import confetti from 'canvas-confetti';
-import { Trophy, Star, ArrowRight, CheckCircle2, Sparkles, RotateCcw, Award } from 'lucide-react';
+import { Trophy, Star, ArrowRight, CheckCircle2, Sparkles, RotateCcw, Award, Zap, Pause, Play } from 'lucide-react';
 
 interface LearnViewProps {
   initialSignId?: string;
@@ -34,6 +34,11 @@ export const LearnView: React.FC<LearnViewProps> = ({
   // Assist Stage State: 'graphic' -> 'hint' -> 'none'
   const [assistStage, setAssistStage] = useState<AssistStage>('graphic');
 
+  // Auto Advance State: Automatically advances through signs, stages, and levels!
+  const [autoAdvance, setAutoAdvance] = useState<boolean>(true);
+  const [stageNotification, setStageNotification] = useState<string | null>(null);
+  const [levelCountdown, setLevelCountdown] = useState<number | null>(null);
+
   // Active Sign within Current Level
   const [currentSignId, setCurrentSignId] = useState<string>(
     currentLevel.signs.includes(initialSignId) ? initialSignId : currentLevel.signs[0]
@@ -56,6 +61,9 @@ export const LearnView: React.FC<LearnViewProps> = ({
   assistStageRef.current = assistStage;
   const comboCountRef = useRef<number>(comboCount);
   comboCountRef.current = comboCount;
+  const autoAdvanceRef = useRef<boolean>(autoAdvance);
+  autoAdvanceRef.current = autoAdvance;
+  const autoNextTimerRef = useRef<any>(null);
   const profileRef = useRef(profile);
   profileRef.current = profile;
   const onRefreshProfileRef = useRef(onRefreshProfile);
@@ -63,6 +71,7 @@ export const LearnView: React.FC<LearnViewProps> = ({
 
   // When level changes, default to first sign of that level
   const handleSelectLevel = (levelId: number) => {
+    if (autoNextTimerRef.current) clearTimeout(autoNextTimerRef.current);
     setCurrentLevelId(levelId);
     const lvl = GAME_LEVELS.find(l => l.id === levelId) || GAME_LEVELS[0];
     setCurrentSignId(lvl.signs[0]);
@@ -75,7 +84,49 @@ export const LearnView: React.FC<LearnViewProps> = ({
     setEvaluation(null);
     evaluatedRef.current = false;
     startTimeRef.current = Date.now();
+    return () => {
+      if (autoNextTimerRef.current) clearTimeout(autoNextTimerRef.current);
+    };
   }, [currentSignId, currentLevelId, assistStage]);
+
+  const handleNextLevel = useCallback(() => {
+    setShowLevelCompleteModal(false);
+    setLevelCountdown(null);
+    if (currentLevelId < GAME_LEVELS.length) {
+      handleSelectLevel(currentLevelId + 1);
+    }
+  }, [currentLevelId]);
+
+  // Master Next Sign / Stage / Level Advancer
+  const handleNextSign = useCallback(() => {
+    if (autoNextTimerRef.current) {
+      clearTimeout(autoNextTimerRef.current);
+      autoNextTimerRef.current = null;
+    }
+    resetHoldBuffer();
+    const idx = currentLevel.signs.indexOf(currentSignIdRef.current);
+    
+    if (idx < currentLevel.signs.length - 1) {
+      // 1. Auto-advance to next sign in current level
+      setCurrentSignId(currentLevel.signs[idx + 1]);
+    } else {
+      // 2. Completed all signs in this stage -> Auto-advance stage!
+      if (assistStageRef.current === 'graphic') {
+        setStageNotification('🎉 BLUEPRINT STAGE CLEARED! AUTO-ADVANCING TO STAGE 2: HINTS...');
+        setTimeout(() => setStageNotification(null), 3200);
+        setAssistStage('hint');
+        setCurrentSignId(currentLevel.signs[0]);
+      } else if (assistStageRef.current === 'hint') {
+        setStageNotification('🔥 HINTS CLEARED! AUTO-ADVANCING TO STAGE 3: BLIND RECALL...');
+        setTimeout(() => setStageNotification(null), 3200);
+        setAssistStage('none');
+        setCurrentSignId(currentLevel.signs[0]);
+      } else {
+        // 3. Completed Stage 3 (Mastery) -> Auto-advance to Next Level!
+        setShowLevelCompleteModal(true);
+      }
+    }
+  }, [currentLevel.signs]);
 
   // Handle landmarks received from camera or simulation
   const handleLandmarks = useCallback((landmarks: Landmark3D[], faceData?: FaceLandmarkData | null, handedness?: 'Left' | 'Right') => {
@@ -96,9 +147,8 @@ export const LearnView: React.FC<LearnViewProps> = ({
       // Record mastery
       setCompletedSigns(prev => {
         const next = { ...prev, [signId]: assistStageRef.current };
-        // Check if all signs in current level are completed
         const allDone = currentLevel.signs.every(s => next[s]);
-        if (allDone) {
+        if (allDone && assistStageRef.current === 'none') {
           setTimeout(() => setShowLevelCompleteModal(true), 600);
         }
         return next;
@@ -114,6 +164,14 @@ export const LearnView: React.FC<LearnViewProps> = ({
         origin: { y: 0.8 },
         colors: ['#38BDF8', '#FBBF24', '#10B981', '#EC4899']
       });
+
+      // ── AUTO-NEXT TRIGGER (1200ms delay for visual satisfaction) ────────
+      if (autoAdvanceRef.current) {
+        if (autoNextTimerRef.current) clearTimeout(autoNextTimerRef.current);
+        autoNextTimerRef.current = setTimeout(() => {
+          handleNextSign();
+        }, 1250);
+      }
 
       // Log attempt to backend
       recordAttemptApi({
@@ -131,43 +189,48 @@ export const LearnView: React.FC<LearnViewProps> = ({
         onRefreshProfileRef.current();
       });
     }
-  }, [currentLevel.signs]);
+  }, [currentLevel.signs, handleNextSign]);
 
-  const handleNextSign = () => {
-    resetHoldBuffer();
-    const idx = currentLevel.signs.indexOf(currentSignId);
-    if (idx < currentLevel.signs.length - 1) {
-      setCurrentSignId(currentLevel.signs[idx + 1]);
+  // Level Complete Modal Auto-Advance Countdown (4s)
+  useEffect(() => {
+    let interval: any = null;
+    if (showLevelCompleteModal && autoAdvance && currentLevelId < GAME_LEVELS.length) {
+      setLevelCountdown(4);
+      interval = setInterval(() => {
+        setLevelCountdown(prev => {
+          if (prev === null || prev <= 1) {
+            clearInterval(interval);
+            handleNextLevel();
+            return null;
+          }
+          return prev - 1;
+        });
+      }, 1000);
     } else {
-      // Loop or advance stage
-      if (assistStage === 'graphic') {
-        setAssistStage('hint');
-        setCurrentSignId(currentLevel.signs[0]);
-      } else if (assistStage === 'hint') {
-        setAssistStage('none');
-        setCurrentSignId(currentLevel.signs[0]);
-      } else {
-        setShowLevelCompleteModal(true);
-      }
+      setLevelCountdown(null);
     }
-  };
-
-  const handleNextLevel = () => {
-    setShowLevelCompleteModal(false);
-    if (currentLevelId < GAME_LEVELS.length) {
-      handleSelectLevel(currentLevelId + 1);
-    }
-  };
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [showLevelCompleteModal, autoAdvance, currentLevelId, handleNextLevel]);
 
   const levelSignDefinitions: SignDefinition[] = currentLevel.signs.map(id => GET_SIGN_BY_ID(id));
   const completedCount = currentLevel.signs.filter(s => completedSigns[s]).length;
-  const progressPct = Math.round((completedCount / currentLevel.signs.length) * 100);
 
   return (
     <div className="max-w-7xl mx-auto px-2 sm:px-4 py-3 sm:py-5">
+      {/* ── STAGE ADVANCEMENT TOAST BANNER ───────────────────────────────── */}
+      {stageNotification && (
+        <div className="mb-3 p-3 bg-[#4ADE80] border-3 border-[#0F172A] rounded-2xl shadow-pixel text-center animate-bounce">
+          <span className="font-pixel text-xs sm:text-sm text-[#0F172A] font-black">
+            {stageNotification}
+          </span>
+        </div>
+      )}
+
       {/* ── TOP LEVEL SELECTION BAR ─────────────────────────────────────── */}
       <div className="mb-4 bg-white border-2 sm:border-3 border-[#0F172A] rounded-2xl p-2.5 sm:p-3 shadow-pixel">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
           <div className="flex items-center space-x-2">
             <span className="text-xl sm:text-2xl">🗺️</span>
             <div>
@@ -179,8 +242,23 @@ export const LearnView: React.FC<LearnViewProps> = ({
               </span>
             </div>
           </div>
+          
           <div className="flex items-center space-x-2">
-            <span className="font-pixel text-[9px] sm:text-[10px] text-[#0284C7] font-bold bg-[#E0F2FE] px-2 py-0.5 rounded-lg border border-[#0F172A]">
+            {/* Auto-Next Toggle Button */}
+            <button
+              onClick={() => setAutoAdvance(prev => !prev)}
+              title="Automatically advance to the next sign and stage when completed"
+              className={`px-2.5 py-1 rounded-xl border-2 border-[#0F172A] font-pixel text-[9px] sm:text-[10px] font-bold shadow-pixel-sm transition-all flex items-center space-x-1.5 active:translate-y-0.5 ${
+                autoAdvance
+                  ? 'bg-[#22C55E] text-white'
+                  : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              <Zap className={`w-3.5 h-3.5 ${autoAdvance ? 'fill-current animate-pulse' : ''}`} />
+              <span>AUTO-NEXT: {autoAdvance ? 'ON' : 'OFF'}</span>
+            </button>
+
+            <span className="font-pixel text-[9px] sm:text-[10px] text-[#0284C7] font-bold bg-[#E0F2FE] px-2 py-1 rounded-lg border border-[#0F172A]">
               LEVEL {currentLevelId} / {GAME_LEVELS.length}
             </span>
           </div>
@@ -283,14 +361,21 @@ export const LearnView: React.FC<LearnViewProps> = ({
               onEnableDemoMode={onToggleDemoMode}
             />
 
-            {/* In-View Next / Stage Advancer Pill */}
+            {/* In-View Next / Auto-Advancer Pill */}
             {evaluation?.isCorrect && (
               <div className="mt-3 p-3 bg-[#BBF7D0] border-2 sm:border-3 border-[#0F172A] rounded-2xl shadow-pixel flex items-center justify-between animate-bounce">
                 <div className="flex items-center space-x-2">
                   <CheckCircle2 className="w-5 h-5 text-[#16A34A]" />
-                  <span className="font-pixel text-[10px] sm:text-xs text-[#166534] font-bold">
-                    ✓ SIGN PERFECTED! (+{xpEarned} XP)
-                  </span>
+                  <div>
+                    <span className="font-pixel text-[10px] sm:text-xs text-[#166534] font-bold block">
+                      ✓ SIGN PERFECTED! (+{xpEarned} XP)
+                    </span>
+                    {autoAdvance && (
+                      <span className="font-pixel text-[8px] text-[#15803D]">
+                        ⚡ AUTO-ADVANCING TO NEXT SIGN...
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <button
                   onClick={handleNextSign}
@@ -338,16 +423,25 @@ export const LearnView: React.FC<LearnViewProps> = ({
               {currentLevel.title}
             </h2>
             
-            <p className="font-chunky text-xs sm:text-sm text-[#475569] mb-5">
-              You mastered all {currentLevel.signs.length} signs in this level! Ready to test your skills in the next tier?
+            <p className="font-chunky text-xs sm:text-sm text-[#475569] mb-4">
+              You mastered all {currentLevel.signs.length} signs across all assist tiers!
             </p>
+
+            {levelCountdown !== null && currentLevelId < GAME_LEVELS.length && (
+              <div className="mb-5 p-2 bg-[#BBF7D0] border-2 border-[#0F172A] rounded-xl font-pixel text-[10px] text-[#166534] font-bold animate-pulse">
+                ⚡ AUTO-ADVANCING TO NEXT LEVEL IN {levelCountdown}s...
+              </div>
+            )}
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
               <button
-                onClick={() => setShowLevelCompleteModal(false)}
+                onClick={() => {
+                  setLevelCountdown(null);
+                  setShowLevelCompleteModal(false);
+                }}
                 className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-white border-2 border-[#0F172A] text-[#0F172A] font-pixel text-[10px] font-bold shadow-pixel-sm active:translate-y-0.5"
               >
-                STAY & REPLAY
+                STAY ON THIS LEVEL
               </button>
 
               {currentLevelId < GAME_LEVELS.length && (
@@ -355,7 +449,7 @@ export const LearnView: React.FC<LearnViewProps> = ({
                   onClick={handleNextLevel}
                   className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#0284C7] hover:bg-[#0369A1] text-white border-2 border-[#0F172A] font-pixel text-[10px] font-bold shadow-pixel active:translate-y-0.5 flex items-center justify-center space-x-1.5"
                 >
-                  <span>NEXT LEVEL</span>
+                  <span>NEXT LEVEL NOW</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               )}
