@@ -92,10 +92,13 @@ const CLUSTERS: Record<string, string[]> = {
   'N': ['N', 'M', 'T', 'S', 'A'],
   'E': ['E', 'A', 'S', 'O', 'C'],
   // 2-finger upward extensions (spread / cross / touch):
-  'U': ['U', 'V', 'R', 'K'],
+  'U': ['U', 'V', 'R', 'K', 'H'],
   'V': ['V', 'U', 'R', 'K'],
   'R': ['R', 'U', 'V', 'K'],
   'K': ['K', 'V', 'U', 'D', 'P'],
+  'H': ['H', 'U', 'G', 'Z'],
+  // 3-finger flared with index-thumb loop:
+  'F': ['F', 'B', 'D', 'W', 'O', '9'],
   // Index-pointing / horizontal variants:
   'G': ['G', 'Q', 'H', 'D', 'Z'],
   'Q': ['Q', 'G', 'P'],

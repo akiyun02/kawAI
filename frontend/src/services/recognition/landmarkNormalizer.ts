@@ -8,6 +8,9 @@ export interface NormalizedFrameData {
   palmScale: number;
   palmNormal: Vector3D;
   handedness: 'Left' | 'Right';
+  isUpright?: boolean;
+  isHorizontal?: boolean;
+  handAngleDeg?: number;
 }
 
 /**
@@ -109,12 +112,23 @@ export function normalizeHandLandmarks(
 
   const allFeatures = [...canonicalCoords, ...kinematicFeatures];
 
+  // Global orientation in camera/image frame (MediaPipe screen coordinates)
+  const handDx = middleMcp.x - wrist.x;
+  const handDy = middleMcp.y - wrist.y;
+  // Angle from straight up (-Y axis) in degrees (-180 to +180)
+  const handAngleDeg = (Math.atan2(handDx, -handDy) * 180) / Math.PI;
+  const isUpright = Math.abs(handAngleDeg) <= 48;
+  const isHorizontal = Math.abs(handAngleDeg) >= 55 && Math.abs(handAngleDeg) <= 125;
+
   return {
     canonicalCoords,
     kinematicFeatures,
     allFeatures,
     palmScale,
     palmNormal: zAxis,
-    handedness
+    handedness,
+    isUpright,
+    isHorizontal,
+    handAngleDeg
   };
 }

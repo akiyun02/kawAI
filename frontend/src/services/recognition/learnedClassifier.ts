@@ -93,7 +93,8 @@ export class LearnedASLClassifier {
   public predictFeatures(
     features: number[],
     motion?: MotionSignature,
-    targetLetter?: string
+    targetLetter?: string,
+    frame?: NormalizedFrameData
   ): LearnedPredictionResult {
     const t0 = performance.now();
     const numClasses = this.classes.length;
@@ -187,6 +188,44 @@ export class LearnedASLClassifier {
       }
     }
 
+    // ── Orientation-Aware Disambiguation for U vs H ──────────────────────────
+    // In canonical normalized hand space, U (vertical) and H (horizontal) have
+    // the identical finger configuration (index + middle up, ring + pinky curled).
+    // MediaPipe camera frame orientation definitively distinguishes them.
+    if (frame) {
+      const pU = probs['U'] || 0;
+      const pH = probs['H'] || 0;
+      if (frame.isUpright) {
+        // Hand is upright -> Cannot be H in standard ASL
+        if (pH > 0.03) {
+          probs['U'] = pU + pH * 0.90;
+          probs['H'] = pH * 0.10;
+        }
+      } else if (frame.isHorizontal) {
+        // Hand is horizontal across body -> Cannot be U in standard ASL
+        if (pU > 0.03) {
+          probs['H'] = pH + pU * 0.90;
+          probs['U'] = pU * 0.10;
+        }
+      }
+    }
+
+    // ── Open-Mode Posture Boost for F ────────────────────────────────────────
+    // F posture: thumb tip touching/near index tip (circle/loop), with middle,
+    // ring, and pinky fingers extended upward.
+    if (features.length >= 78) {
+      const iCurl = features[64];
+      const mCurl = features[65];
+      const rCurl = features[66];
+      const pCurl = features[67];
+      const pIdxTip = features[72];
+
+      const isFLoop = pIdxTip <= 0.55 && iCurl >= 0.20 && mCurl <= 0.62 && rCurl <= 0.65 && pCurl <= 0.65;
+      if (isFLoop) {
+        probs['F'] = Math.min(0.99, (probs['F'] || 0) + 0.35);
+      }
+    }
+
     // ── Target-Aware Kinematic Disambiguation for Confusable Sibling Signs ────
     if (targetLetter && features.length >= 78) {
       const cleanTarget = targetLetter.toUpperCase();
@@ -247,6 +286,27 @@ export class LearnedASLClassifier {
       if (cleanTarget === 'R' && iCurl <= 0.55 && mCurl <= 0.55 && rCurl > 0.58 && pCurl > 0.58 && spreadIM <= 0.26) {
         probs['R'] = Math.min(0.99, (probs['R'] || 0) + 0.25);
       }
+
+      // F: Thumb and index touching in ring, 3 fingers extended
+      if (cleanTarget === 'F' && pIdxTip <= 0.60 && mCurl <= 0.68 && rCurl <= 0.68 && pCurl <= 0.68) {
+        probs['F'] = Math.min(0.99, (probs['F'] || 0) + 0.35);
+      }
+
+      // U: Upright index and middle extended together
+      if (cleanTarget === 'U' && iCurl <= 0.58 && mCurl <= 0.58 && rCurl > 0.55 && pCurl > 0.55) {
+        if (!frame || frame.isUpright !== false) {
+          probs['U'] = Math.min(0.99, (probs['U'] || 0) + 0.35);
+          if (probs['H']) probs['H'] *= 0.10;
+        }
+      }
+
+      // H: Horizontal index and middle extended together
+      if (cleanTarget === 'H' && iCurl <= 0.58 && mCurl <= 0.58 && rCurl > 0.55 && pCurl > 0.55) {
+        if (!frame || frame.isHorizontal !== false) {
+          probs['H'] = Math.min(0.99, (probs['H'] || 0) + 0.35);
+          if (probs['U']) probs['U'] *= 0.10;
+        }
+      }
     }
 
     // Sort predictions
@@ -297,7 +357,7 @@ export class LearnedASLClassifier {
     motion?: MotionSignature,
     targetLetter?: string
   ): LearnedPredictionResult {
-    return this.predictFeatures(frame.allFeatures, motion, targetLetter);
+    return this.predictFeatures(frame.allFeatures, motion, targetLetter, frame);
   }
 
   /**

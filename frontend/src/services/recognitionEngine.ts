@@ -650,18 +650,75 @@ export function evaluateSign(
 
     case 'F': {
       // Thumb and index touch to form a ring (OK sign), middle, ring, pinky extended
-      const circleClosed = thumb.distToIndexTip <= 0.42;
-      const upperThreeUp = middle.isExtended && ring.isExtended && pinky.isExtended;
+      const distToIndexPip = dist3D(landmarks[4], landmarks[6]) / palmScale;
+      const circleClosed = thumb.distToIndexTip <= 0.58 || distToIndexPip <= 0.55;
+      const upperThreeUp = (middle.isExtended || middle.extensionRatio >= 0.56) &&
+                           (ring.isExtended || ring.extensionRatio >= 0.56) &&
+                           (pinky.isExtended || pinky.extensionRatio >= 0.56);
 
       if (!upperThreeUp) {
         passesCanonical = false;
         issues.push("Extend middle, ring, and pinky fingers straight up for 'F'.");
-      } else if (index.isExtended) {
+      } else if (index.isExtended && index.extensionRatio > 0.72) {
         passesCanonical = false;
         issues.push("Touch your index fingertip to your thumb tip.");
       } else if (!circleClosed) {
         passesCanonical = false;
         issues.push("Bring index fingertip and thumb tip together to form a ring for 'F'.");
+      }
+      shapeScore = passesCanonical ? 98 : 42;
+      break;
+    }
+
+    case 'H': {
+      // Index and middle extended together horizontally, ring and pinky curled
+      const twoExtended = (index.isExtended || index.extensionRatio >= 0.58) &&
+                          (middle.isExtended || middle.extensionRatio >= 0.58);
+      const bottomTwoCurled = !ring.isExtended && !pinky.isExtended &&
+        (ring.isCurled || ring.extensionRatio <= 0.58) && (pinky.isCurled || pinky.extensionRatio <= 0.58);
+      const handDx = landmarks[9].x - landmarks[0].x;
+      const handDy = landmarks[9].y - landmarks[0].y;
+      const angle = (Math.atan2(handDx, -handDy) * 180) / Math.PI;
+      const isHorizontal = Math.abs(angle) >= 48 && Math.abs(angle) <= 132;
+
+      if (!twoExtended) {
+        passesCanonical = false;
+        issues.push("Extend index and middle fingers together for 'H'.");
+      } else if (!bottomTwoCurled) {
+        passesCanonical = false;
+        issues.push("Curl ring and pinky fingers down tightly for 'H'.");
+      } else if (!isHorizontal) {
+        passesCanonical = false;
+        issues.push("Point your fingers sideways horizontally for 'H' (pointing straight up is 'U').");
+      }
+      shapeScore = passesCanonical ? 98 : 42;
+      break;
+    }
+
+    case 'U': {
+      // Index and middle extended together vertically, ring and pinky curled
+      const uSpread = dist3D(landmarks[8], landmarks[12]) / palmScale;
+      const twoUp = (index.isExtended || index.extensionRatio >= 0.58) &&
+                    (middle.isExtended || middle.extensionRatio >= 0.58);
+      const bottomTwoCurled = !ring.isExtended && !pinky.isExtended &&
+        (ring.isCurled || ring.extensionRatio <= 0.58) && (pinky.isCurled || pinky.extensionRatio <= 0.58);
+      const handDx = landmarks[9].x - landmarks[0].x;
+      const handDy = landmarks[9].y - landmarks[0].y;
+      const angle = (Math.atan2(handDx, -handDy) * 180) / Math.PI;
+      const isUpright = Math.abs(angle) <= 50;
+
+      if (!twoUp) {
+        passesCanonical = false;
+        issues.push("Extend index and middle fingers straight up for 'U'.");
+      } else if (!bottomTwoCurled) {
+        passesCanonical = false;
+        issues.push("Curl ring and pinky fingers down tightly for 'U'.");
+      } else if (!isUpright) {
+        passesCanonical = false;
+        issues.push("Hold hand pointing straight up for 'U' (pointing sideways is 'H').");
+      } else if (uSpread > 0.40) {
+        passesCanonical = false;
+        issues.push("Keep index and middle fingers together for 'U' (spreading them is 'V').");
       }
       shapeScore = passesCanonical ? 98 : 42;
       break;
