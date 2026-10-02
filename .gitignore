@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Build outputs
+dist/
+frontend/dist/
+
+# Python & Environment
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+.env
+.env.local
+venv/
+.venv/
+env/
+
+# Dataset and model cache
+data/
+ml/data/
+.cache/
+
+# System and logs
+*.log
+.system_generated/
+.DS_Store
+Thumbs.db

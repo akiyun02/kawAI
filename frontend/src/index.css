@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: #E0F2FE;
+  color: #0F172A;
+  font-family: 'Fredoka', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Light Blue Diamond Checkerboard Game Background (as in reference image) */
+.game-diamond-bg {
+  background-color: #E0F2FE;
+  background-image: 
+    linear-gradient(135deg, #BAE6FD 25%, transparent 25%),
+    linear-gradient(225deg, #BAE6FD 25%, transparent 25%),
+    linear-gradient(45deg, #BAE6FD 25%, transparent 25%),
+    linear-gradient(315deg, #BAE6FD 25%, #E0F2FE 25%);
+  background-position: 28px 0, 28px 0, 0 0, 0 0;
+  background-size: 56px 56px;
+  background-repeat: repeat;
+}
+
+/* Notebook Binder and Pixel Borders */
+.pixel-border {
+  border: 3px solid #0F172A;
+  box-shadow: 0 4px 0 #0F172A;
+}
+
+.pixel-border-sm {
+  border: 2.5px solid #0F172A;
+  box-shadow: 0 3px 0 #0F172A;
+}
+
+.pixel-border-lg {
+  border: 4px solid #0F172A;
+  box-shadow: 0 6px 0 #0F172A;
+}
+
+/* Pressable 3D Retro Game Buttons */
+.game-btn {
+  border: 3px solid #0F172A;
+  box-shadow: 0 4px 0 #0F172A;
+  transition: all 0.08s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+.game-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 0 #0F172A;
+}
+
+.game-btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #0F172A;
+}
+
+/* Inset Pixel Container */
+.pixel-inset {
+  border: 2.5px solid #0F172A;
+  box-shadow: inset 0 3px 0 rgba(0,0,0,0.12), inset 0 -2px 0 rgba(255,255,255,0.7);
+}
+
+/* Custom Game Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #BAE6FD;
+  border-left: 2px solid #0F172A;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #38BDF8;
+  border: 2px solid #0F172A;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #0284C7;
+}
+
+/* Accessibility Modes */
+.high-contrast {
+  --tw-bg-opacity: 1 !important;
+  background-color: #000000 !important;
+  color: #FFFFFF !important;
+}
+
+.large-text {
+  font-size: 1.15rem;
+}

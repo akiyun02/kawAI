@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KawAI — ASL Fingerspelling Game | Empowered by AI</title>
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <meta name="description" content="KawAI: Gamified ASL sign language and fingerspelling learning platform empowered by on-device AI computer vision, real-time hand biomechanics, and retro arcade RPG progression." />
+    <!-- MediaPipe Hands, Face Detection & Camera Utils for zero-latency local in-browser CV -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
+    
+    <!-- Google Fonts for Retro Game & Handheld RPG Aesthetic -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Press+Start+2P&family=Silkscreen:wght@400;700&family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  </head>
+  <body class="selection:bg-sky-400 selection:text-slate-900 font-chunky antialiased">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
