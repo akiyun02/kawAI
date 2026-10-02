@@ -1,13 +1,13 @@
-# SIGNQUEST Architecture & Design Specification
-**Learn. Sign. Level Up.**  
+# KawAI Architecture & Design Specification
+**EMPOWERED BY AI • Learn. Sign. Level Up.**  
 *RAITE 2026 AI in Education Hackathon Prototype*
 
 ---
 
 ## 1. Executive Summary & Core Philosophy
-SIGNQUEST is an AI-powered sign language education platform that unites browser-based computer vision hand tracking with RPG progression mechanics and pedagogical AI personalization.
+KawAI is an AI-powered sign language education platform that unites browser-based computer vision hand tracking with RPG progression mechanics and pedagogical AI personalization.
 
-Unlike traditional static quizzes or basic classifiers that simply emit "Wrong", SIGNQUEST deconstructs sign mechanics into three physical pillars:
+Unlike traditional static quizzes or basic classifiers that simply emit "Wrong", KawAI deconstructs sign mechanics into three physical pillars:
 1. **Hand Shape** (Finger curl, extension, thumb abduction)
 2. **Hand Orientation** (3D Palm normal vector, wrist angle relative to camera)
 3. **Spatial Position & Trajectory** (Framing within video viewport, dynamic motion)
